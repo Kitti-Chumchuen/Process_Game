@@ -1,0 +1,467 @@
+#define _CRT_SECURE_NO_WARNINGS 1
+#include <stdio.h>
+#include <windows.h>
+#include <time.h>
+#include <conio.h>
+#include <thread>
+#include <stdbool.h>
+#include <string.h>
+
+#define esc 27
+#define scount 20
+#define screen_x 80
+#define screen_y 25
+HANDLE rHnd;
+DWORD fdwMode;
+HANDLE wHnd;
+CHAR_INFO consoleBuffer[screen_x * screen_y];
+COORD bufferSize = { screen_x,screen_y };
+COORD characterPos = { 0,0 };
+SMALL_RECT windowSize = { 0,0,screen_x - 1,screen_y - 1 };
+DWORD numEvents = 0;
+DWORD numEventsRead = 0;
+
+int color = 7;
+int check = 0;
+int round_eny = 0;
+int covidx[scount], covidy[scount], covid_color[scount], item_plusx = 0, item_plusy = 0;
+int waitfor = 0, first = 0;
+bool gotit = false;
+int maskx = 40, masky = 18;
+int bufferx, buffery;
+
+//void new_buuffersize() {
+//	for (int i = 0; i < 420; i++) {
+//		bufferSize[i] = {};
+//	}
+//}
+void setcursor(bool visible) {
+	HANDLE console = GetStdHandle(STD_OUTPUT_HANDLE);
+	CONSOLE_CURSOR_INFO lpCursor;
+	lpCursor.bVisible = visible;
+	lpCursor.dwSize = 20;
+	SetConsoleCursorInfo(console, &lpCursor);
+}
+
+void gotoxy(int x, int y)
+{
+	COORD c = { x, y };
+	SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), c);
+}
+
+void setcolor(int fg, int bg) {
+	HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+	SetConsoleTextAttribute(hConsole, bg * 16 + fg);
+}
+
+char cursor(int x, int y) {
+	HANDLE hStd = GetStdHandle(STD_OUTPUT_HANDLE);
+	char buf[2]; COORD c = { x,y }; DWORD num_read;
+	if (!ReadConsoleOutputCharacter(hStd, (LPTSTR)buf, 1, c, (LPDWORD)&num_read)) {
+		return '\0';
+	}
+	else { return buf[0]; }
+}
+
+int setConsole(int x, int y)
+{
+	wHnd = GetStdHandle(STD_OUTPUT_HANDLE);
+	SetConsoleWindowInfo(wHnd, TRUE, &windowSize);
+	SetConsoleScreenBufferSize(wHnd, bufferSize);
+	return 0;
+}
+
+int setMode()
+{
+	rHnd = GetStdHandle(STD_INPUT_HANDLE);
+	fdwMode = ENABLE_EXTENDED_FLAGS | ENABLE_WINDOW_INPUT | ENABLE_MOUSE_INPUT;
+	SetConsoleMode(rHnd, fdwMode);
+	return 0;
+}
+
+void clear_buffer()
+{   
+	for (int y = 0; y < 20; y++) {
+		for (int x = 30; x < 50; x++) {
+			consoleBuffer[x + screen_x * y].Attributes = color;
+			consoleBuffer[x + screen_x * y].Char.AsciiChar = ' ';
+		}
+	}
+}
+
+void gimme_yourname() {
+	gotoxy(32, 9);
+	printf("ENTER YOUR NAME\n");
+	gotoxy(27, 10);
+	printf("(less than 20 Characters)");
+	gotoxy(31, 12);
+	printf("> ");
+}
+void clear_bullet(int x, int y) {
+	setcolor(7, 0);
+	gotoxy(x, y); printf(" ");
+}
+
+void fill_buffer_to_console() {
+	WriteConsoleOutputA(wHnd, consoleBuffer, bufferSize, characterPos, &windowSize);
+}
+
+void mask_draw(int x, int y) {
+	gotoxy(x, y);
+	setcolor(7, 0);
+	printf(" [|==|] ");
+}
+
+void alcohol_draw(int x, int y,int bullet) {
+	gotoxy(x, y);
+	setcolor(7, 0);
+	printf(" [%d]-|-[%d] ", bullet, bullet);
+}
+
+void bullet_draw(int x, int y) {
+	gotoxy(x, y);
+	printf(" ^ ");
+}
+
+void itemplus_draw() {
+	item_plusx = 10 + rand() % 70;
+	item_plusy = 1;
+}
+
+void itemplus_fall() {
+		if ( item_plusy >= 20 ) {
+			item_plusx = 9 + rand() % 60;
+			item_plusy = 0;
+		}
+		else {
+			item_plusy = item_plusy + 1;
+		}
+}
+
+void fill_itemplus_to_buffer() {
+		int x = item_plusx;
+		int y = item_plusy;
+		if (y >= 20 ) {
+			consoleBuffer[x + screen_x * y].Attributes = 11;
+			consoleBuffer[x + screen_x * y].Char.AsciiChar = '+';
+		}
+}
+
+void me(int x, int y,char s[]) {
+	int a = 20;
+		for (int x = 0; x < 80; ++x) {
+			consoleBuffer[x + screen_x * a].Attributes = 11;
+			consoleBuffer[x + screen_x * a].Char.AsciiChar = '_';
+		}
+		gotoxy(x, y);
+		setcolor(13,15);
+		printf(" %s ", s);
+}
+
+void covid_draw() { 
+	for (int i = 0; i < scount; i++) {
+		covidx[i] = 30 + rand() % 20;
+		covidy[i] = -40 + rand() % 36;
+	}
+}
+
+void score_count(int a) {
+	gotoxy(0, 1);
+	setcolor(0, 15);
+	printf(" Score : %d ", a);
+}
+
+void hp_count(int a) {
+	gotoxy(0, 3);
+	setcolor(4, 15);
+	printf(" HP : %d ", a);
+}
+
+void covid_fall() {
+	int i = 0;
+	for (i = 0; i < scount; i++) {
+		check += 1;
+		if (covidy[i] >= screen_y - 1) {
+			covidx[i] = 30 + rand() % 20;
+			covidy[i] = 1;
+		}
+		else {
+			covidy[i] = covidy[i] + 1;
+
+		}
+	}
+}
+
+void change_color() { color = 1 + rand() % 9; }
+void clear_screen() {
+	for (int y = 0; y < 20; y++) {
+		for (int x = 0; x < 80; x++) {
+			gotoxy(x, y);
+			printf(" ");
+		}
+	}
+}
+void fill_covid_to_buffer() {
+	for (int i = 0; i < scount; i++) {
+		int x = covidx[i];
+		int y = covidy[i];
+		if (covidy[i] >= 0) {
+		consoleBuffer[x + screen_x * y].Char.AsciiChar = '*';
+	  }
+	}
+}
+
+void game_starto() {
+	gotoxy(30, 10);
+	setcolor(15, 13);
+	printf(" HUMAN VS COVID-19 ");
+	
+	gotoxy(26, 12);
+	setcolor(7, 0);
+	//printf(" Press 'Enter' to continue ");
+}
+
+int main()
+{   
+	char myname[20],startEnter;
+	int countdown = 0,namelange;
+	int hp = 2000;
+	int score = 0;
+	char check1, check2, check3, check4, check5, check6, checkGotAttack;
+	char ch = '.';
+	setcursor(0);
+	int i = 0, x = 0, y = 0;
+	int al_x = 40;
+	int al_y = 20;
+	int total_bullet = 10;
+	int rex = 0, rey = 0;
+	int bx, by, ib = 0;
+	int bullet = 0;
+	srand(time(NULL));
+	setConsole(screen_x, screen_y);
+	bool change_alcohol = false;
+	bool play = false;
+	bool noneStop = true;
+	bool still_mask = true;
+	bool still_alcohol = false;
+	DWORD numEvents = 0;
+	DWORD numEventsRead = 0;
+	setConsole(screen_x, screen_y);	
+	//int newWidth = 16, newHeight = 28;
+	//CONSOLE_FONT_INFOEX fontStructure = { 0 };
+	//fontStructure.cbSize = sizeof(fontStructure);
+    //fontStructure.dwFontSize.X = newWidth;
+	//fontStructure.dwFontSize.Y = newHeight;
+	//wcscpy(fontStructure.FaceName, L"Arial");
+	//HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+	//SetCurrentConsoleFontEx(hConsole, true, &fontStructure);
+	
+	while (1) {
+		game_starto();
+		system("pause");
+		break;
+	}
+	clear_screen();
+	gimme_yourname();
+	scanf("%[^\n]",myname);
+	namelange = strlen(myname);
+	namelange = 40-(namelange / 2);
+	setMode();
+	covid_draw();
+	itemplus_draw();
+	mask_draw(maskx, masky);
+	play = true;
+		while(play)
+		{
+			if (still_mask) {
+				if (_kbhit()) {
+					ch = _getch();
+					if (ch == 'c' || ch == 'C') {
+						change_color(); ch = '.';
+					}
+				}
+				//std::thread cf(covid_fall);
+				//cf.detach();
+				//std::thread cb(clear_buffer, 500);
+				//cb.detach();
+				//std::thread fcb(fill_covid_to_buffer,500);
+				//fcb.detach();
+				//std::thread fbc(fill_buffer_to_console,500);
+				//fbc.detach();
+				if (gotit == false && countdown >= 500) {
+					itemplus_fall();
+					//printf("TRUE");
+				}
+				//covid_draw();
+				covid_fall();
+				clear_buffer();
+				if (countdown >= 500) {
+					fill_itemplus_to_buffer();
+				}
+				fill_covid_to_buffer();
+				fill_buffer_to_console();
+				me(namelange,22,myname);
+				score_count(score);
+				hp_count(hp);
+				if (still_mask) {
+					check1 = cursor(maskx + 1, masky - 1);
+					check2 = cursor(maskx + 2, masky - 1);
+					check3 = cursor(maskx + 3, masky - 1);
+					check4 = cursor(maskx + 4, masky - 1);
+					check5 = cursor(maskx + 5, masky - 1);
+					check6 = cursor(maskx + 6, masky - 1);
+					for (int n = 0; n < 80; n++) {
+						checkGotAttack = cursor(n, 20);
+						if (checkGotAttack == '*') {
+							hp = hp - 1;
+							checkGotAttack = '.';
+						}
+					}
+					if (check1 == '*' || check2 == '*' || check3 == '*' || check4 == '*' || check5 == '*' || check6 == '*') {
+						score = score + 1;
+						for (int i = 0; i < scount; i++) {
+							if (covidy[i] == masky - 1 && covidx[i] == maskx + 1) {
+								covidx[i] = 30 + rand() % 20;
+								covidy[i] = -60+ rand() % 20;
+							}
+							if (covidy[i] == masky - 1 && covidx[i] == maskx + 2) {
+								covidx[i] = 30 + rand() % 20;
+								covidy[i] = -60 + rand() % 20;
+							}
+							if (covidy[i] == masky - 1 && covidx[i] == maskx + 3) {
+								covidx[i] = 30 + rand() % 20;
+								covidy[i] = -60 + rand() % 20;
+							}
+							if (covidy[i] == masky - 1 && covidx[i] == maskx + 4) {
+								covidx[i] = 30 + rand() % 20;
+								covidy[i] = -60 + rand() % 20;
+							}
+							if (covidy[i] == masky - 1 && covidx[i] == maskx + 5) {
+								covidx[i] = 30 + rand() % 20;
+								covidy[i] = -60 + rand() % 20;
+							}
+							if (covidy[i] == masky - 1 && covidx[i] == maskx + 6) {
+								covidx[i] = 30 + rand() % 20;
+								covidy[i] = -60 + rand() % 20;
+							}
+						}
+					}
+					countdown += 10;
+					printf("%5d", countdown);
+
+
+					if (check1 == '+' || check2 == '+' || check3 == '+' || check4 == '+') {
+						gotit = true;
+						still_mask = false;
+						still_alcohol = true;
+						//break;
+					}
+
+					if (ch == esc) {
+						gotoxy(25, 13);
+						system("pause");
+					}
+					else if (hp <= 0) {
+						hp_count(hp);
+						break;
+					}
+					GetNumberOfConsoleInputEvents(rHnd, &numEvents);
+					if (numEvents != 0) {
+						INPUT_RECORD* eventBuffer = new INPUT_RECORD[numEvents];
+						ReadConsoleInput(rHnd, eventBuffer, numEvents, &numEventsRead);
+						for (DWORD i = 0; i < numEventsRead; ++i) {
+							if (eventBuffer[i].EventType == KEY_EVENT && eventBuffer[i].Event.KeyEvent.bKeyDown == true) {
+								if (eventBuffer[i].Event.KeyEvent.wVirtualKeyCode == VK_ESCAPE) {
+									play = false;
+								}
+							}
+							else if (eventBuffer[i].EventType == MOUSE_EVENT) {
+								int posx = eventBuffer[i].Event.MouseEvent.dwMousePosition.X;
+								int posy = eventBuffer[i].Event.MouseEvent.dwMousePosition.Y;
+								maskx = posx - 3;
+								masky = posy;
+								mask_draw(maskx, masky);
+								if (eventBuffer[i].Event.MouseEvent.dwButtonState & FROM_LEFT_1ST_BUTTON_PRESSED) {
+									//change_color();
+								}
+							}
+						}
+						delete[] eventBuffer;
+					}
+
+					Sleep(100);
+				}
+			}
+				if (still_alcohol) {
+					//printf("GOGO");
+					alcohol_draw(al_x, al_y, total_bullet);
+						if (_kbhit()) {
+							ch = _getch();
+							if (ch == 'a') { alcohol_draw(--al_x, al_y, total_bullet); }
+							if (ch == 's') { alcohol_draw(++al_x, al_y, total_bullet); }
+							if (bullet != 1 && ch == ' ') {
+								bullet = 1;
+								bx = al_x + 3;
+								by = al_y - 1;
+								total_bullet -= 1;
+							}
+							fflush(stdin);
+						}
+						if (bullet == 1) {
+							clear_bullet(bx, by);
+							if (by == 2) { bullet = 0; }
+							else if (cursor(bx, by - 1) == '*') {
+								std::thread q(Beep, 1000, 90);
+								q.detach();
+								score++;
+								bullet = 0;
+								clear_bullet(bx, by - 1);
+								score_count(score);
+								srand(time(NULL));
+								for (int i = 0; i < scount; i++) {
+									if (covidy[i] == by - 1 && covidx[i] == bx) {
+										covidx[i] = 0 + rand() % screen_x;
+										covidy[i] = -6 + rand() % 6;
+									}
+								}
+							}
+							else {
+								ib = ib + 1;
+								bullet_draw(bx, --by);
+								for (int x = 1; x < 9; x++) {
+									if (ib == x) {
+										std::thread q(Beep, 700, 32);
+										q.detach();
+									}
+									else if (cursor(bx, by - 1) == '*' || by == 2) {
+										ib = 0;
+									}
+								}
+							}
+						}
+						Sleep(100);
+						if (total_bullet == 0 ) {
+							still_alcohol = false;
+							still_mask = true;
+							gotit = false;
+							countdown = 0;
+						}
+						if (ch == esc) {
+							system("pause");
+						}
+						else if (hp <= 0) {
+							break;
+						}
+					}
+					if (ch == esc) {
+						system("pause");
+					}
+					else if (hp <= 0) {
+						break;
+					}
+             }
+		//}
+	return 0;
+} 
+
+		
